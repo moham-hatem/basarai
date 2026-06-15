@@ -42,6 +42,7 @@ Task 04 introduces the initial Supabase migration for the MVP schema. Brand is t
 - `id uuid primary key references auth.users(id) on delete cascade`
 - `full_name text`
 - `avatar_url text`
+- `is_super_admin boolean not null default false`
 - `created_at timestamptz not null default now()`
 - `updated_at timestamptz not null default now()`
 
@@ -99,7 +100,7 @@ Stores provider key metadata only. Raw OpenAI and Gemini keys must never be stor
 
 - `id uuid primary key default gen_random_uuid()`
 - `brand_id uuid not null references brands(id) on delete cascade`
-- `created_by uuid references auth.users(id)`
+- `user_id uuid not null references profiles(id)`
 - `provider ai_provider not null`
 - `model text not null`
 - `platform social_platform not null`
@@ -152,6 +153,9 @@ For super admin audit trails.
 ## RLS
 
 - RLS is enabled on every app table in the initial migration.
-- No RLS policies are created in Task 04.
-- Task 05 will add RLS helper functions and access policies.
+- Task 05 adds security-definer helper functions for super admin checks, Brand membership checks, Brand role checks, and first-owner onboarding.
+- Task 05 adds policies for profile ownership, Brand membership, role-based tenant access, provider-key metadata access, generation history, usage event inserts, and super-admin audit access.
+- `brand_provider_keys` stores metadata only. Raw provider keys must stay outside app tables.
+- `generation_history.user_id` references `profiles(id)` from the initial schema so inserts can require `user_id = auth.uid()`.
+- No permissive authenticated `using (true)` policies are used.
 - Service role access remains server-side only and must never be used in client bundles.

@@ -20,6 +20,7 @@ create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text,
   avatar_url text,
+  is_super_admin boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -84,7 +85,7 @@ create table public.brand_provider_keys (
 create table public.generation_history (
   id uuid primary key default gen_random_uuid(),
   brand_id uuid not null references public.brands(id) on delete cascade,
-  created_by uuid references auth.users(id) on delete set null,
+  user_id uuid not null references public.profiles(id) on delete restrict,
   provider public.ai_provider not null,
   model text not null,
   platform public.social_platform not null,
@@ -151,7 +152,7 @@ create index brand_provider_keys_brand_id_idx on public.brand_provider_keys (bra
 create index brand_provider_keys_active_idx on public.brand_provider_keys (brand_id, provider) where is_active;
 
 create index generation_history_brand_created_at_idx on public.generation_history (brand_id, created_at desc);
-create index generation_history_created_by_idx on public.generation_history (created_by);
+create index generation_history_user_id_idx on public.generation_history (user_id);
 create index generation_history_status_idx on public.generation_history (status);
 create index generation_history_platform_idx on public.generation_history (platform);
 
