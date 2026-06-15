@@ -1,6 +1,20 @@
-import Link from "next/link";
+import { redirect } from "next/navigation";
+import { hasSupabasePublicEnv } from "@/lib/env";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { LoginForm } from "@/features/auth/components/login-form";
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  if (hasSupabasePublicEnv()) {
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user) {
+      redirect("/dashboard");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -8,25 +22,11 @@ export default function LoginPage() {
           Log in
         </h1>
         <p className="text-sm leading-6 text-stone-600 dark:text-stone-300">
-          Authentication will be connected to Supabase in a later task.
+          Sign in with the email and password for your Basarai account.
         </p>
       </div>
 
-      <div className="rounded-md border border-dashed border-stone-300 p-4 text-sm text-stone-600 dark:border-stone-700 dark:text-stone-300">
-        Login form placeholder.
-      </div>
-
-      <div className="flex items-center justify-between text-sm">
-        <Link className="font-medium text-emerald-800 dark:text-emerald-300" href="/signup">
-          Create account
-        </Link>
-        <Link
-          className="font-medium text-emerald-800 dark:text-emerald-300"
-          href="/reset-password"
-        >
-          Reset password
-        </Link>
-      </div>
+      <LoginForm />
     </div>
   );
 }
