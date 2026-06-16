@@ -1,8 +1,10 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { hasSupabasePublicEnv } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { ACTIVE_BRAND_COOKIE_NAME } from "@/features/brands/queries";
 import {
   createBrandSlug,
   createSlugSuffix,
@@ -12,6 +14,61 @@ import {
 
 function errorState(message: string): CreateBrandFormState {
   return { status: "error", message };
+}
+
+function isSafeReturnPath(path: FormDataEntryValue | null): path is string {
+  return typeof path === "string" && path.startsWith("/") && !path.startsWith("//");
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
+export async function setActiveBrandAction(formData: FormData): Promise<void> {
+  const brandId = formData.get("brandId");
+  const returnTo = formData.get("returnTo");
+  const redirectPath = isSafeReturnPath(returnTo) ? returnTo : "/dashboard";
+
+  if (typeof brandId !== "string" || !isUuid(brandId)) {
+    redirect(redirectPath);
+  }
+
+  if (!hasSupabasePublicEnv()) {
+    redirect(redirectPath);
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: membership, error } = await supabase
+    .from("brand_members")
+    .select("brand_id")
+    .eq("user_id", user.id)
+    .eq("brand_id", brandId)
+    .maybeSingle();
+
+  if (error || !membership) {
+    redirect(redirectPath);
+  }
+
+  const cookieStore = await cookies();
+  cookieStore.set(ACTIVE_BRAND_COOKIE_NAME, brandId, {
+    httpOnly: true,
+    maxAge: 60 * 60 * 24 * 365,
+    path: "/",
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
+
+  redirect(redirectPath);
 }
 
 export async function createFirstBrandAction(

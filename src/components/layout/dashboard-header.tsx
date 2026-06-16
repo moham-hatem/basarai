@@ -1,9 +1,14 @@
 import { LogoutButton } from "@/features/auth/components/logout-button";
+import { BrandSwitcher } from "@/features/brands/components/brand-switcher";
 import type { UserBrand } from "@/features/brands/queries";
 
-export function DashboardHeader({ brands }: { brands: UserBrand[] }) {
-  const firstBrand = brands[0];
-
+export function DashboardHeader({
+  activeBrand,
+  brands,
+}: {
+  activeBrand: UserBrand | null;
+  brands: UserBrand[];
+}) {
   return (
     <header className="border-b border-stone-200 bg-white/80 px-5 py-4 backdrop-blur dark:border-stone-800 dark:bg-stone-950/80 sm:px-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -24,21 +29,10 @@ export function DashboardHeader({ brands }: { brands: UserBrand[] }) {
             >
               Brand
             </label>
-            <select
-              className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm text-stone-900 shadow-sm outline-none focus:border-emerald-700 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
-              defaultValue={firstBrand?.id ?? "none"}
-              id="brand-switcher"
-            >
-              {firstBrand ? (
-                brands.map((brand) => (
-                  <option key={brand.id} value={brand.id}>
-                    {brand.name}
-                  </option>
-                ))
-              ) : (
-                <option value="none">No brand selected</option>
-              )}
-            </select>
+            <BrandSwitcher
+              activeBrandId={activeBrand?.id ?? null}
+              brands={brands}
+            />
           </div>
           <LogoutButton />
         </div>

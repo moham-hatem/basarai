@@ -1,7 +1,10 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { getUserBrands } from "@/features/brands/queries";
+import {
+  getActiveBrandForUser,
+  getUserBrands,
+} from "@/features/brands/queries";
 import { hasSupabasePublicEnv } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -24,6 +27,11 @@ export default async function DashboardLayout({
   }
 
   const brands = await getUserBrands(user.id);
+  const activeBrand = await getActiveBrandForUser(user.id, brands);
 
-  return <DashboardShell brands={brands}>{children}</DashboardShell>;
+  return (
+    <DashboardShell activeBrand={activeBrand} brands={brands}>
+      {children}
+    </DashboardShell>
+  );
 }

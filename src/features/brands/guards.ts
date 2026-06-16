@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getFirstUserBrand, type UserBrand } from "@/features/brands/queries";
+import { getActiveBrandForUser, type UserBrand } from "@/features/brands/queries";
 
 export async function requireCurrentUserBrand(): Promise<UserBrand> {
   const supabase = await createSupabaseServerClient();
@@ -12,7 +12,7 @@ export async function requireCurrentUserBrand(): Promise<UserBrand> {
     redirect("/login");
   }
 
-  const brand = await getFirstUserBrand(user.id);
+  const brand = await getActiveBrandForUser(user.id);
 
   if (!brand) {
     redirect("/onboarding/brand");
