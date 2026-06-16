@@ -7,8 +7,27 @@ import {
 } from "@/lib/env";
 import type { Database } from "@/lib/supabase/types";
 
+const protectedDashboardPaths = [
+  "/dashboard",
+  "/brands",
+  "/brand-kit",
+  "/generator",
+  "/history",
+  "/settings",
+  "/admin",
+] as const;
+
+function isProtectedDashboardPath(pathname: string): boolean {
+  return (
+    protectedDashboardPaths.includes(
+      pathname as (typeof protectedDashboardPaths)[number],
+    ) || pathname.startsWith("/onboarding")
+  );
+}
+
 export async function updateSupabaseSession(request: NextRequest) {
   let response = NextResponse.next({ request });
+  const pathname = request.nextUrl.pathname;
 
   if (!hasSupabasePublicEnv()) {
     if (shouldRequireSupabasePublicEnv()) {
@@ -38,7 +57,34 @@ export async function updateSupabaseSession(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!isProtectedDashboardPath(pathname)) {
+    return response;
+  }
+
+  if (!user) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+
+  const { data: membership } = await supabase
+    .from("brand_members")
+    .select("brand_id")
+    .eq("user_id", user.id)
+    .limit(1)
+    .maybeSingle();
+
+  const isOnboardingPath = pathname === "/onboarding/brand";
+
+  if (!membership && !isOnboardingPath) {
+    return NextResponse.redirect(new URL("/onboarding/brand", request.url));
+  }
+
+  if (membership && isOnboardingPath) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
 
   return response;
 }

@@ -29,13 +29,18 @@ create table public.brands (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   slug text not null,
+  industry text,
+  website_url text,
   default_language public.output_language not null default 'en',
   created_by uuid not null references auth.users(id) on delete restrict,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint brands_slug_unique unique (slug),
   constraint brands_name_not_blank check (length(btrim(name)) > 0),
-  constraint brands_slug_format check (slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$')
+  constraint brands_slug_format check (slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'),
+  constraint brands_website_url_format check (
+    website_url is null or website_url ~ '^https?://.+'
+  )
 );
 
 create table public.brand_members (
@@ -50,6 +55,8 @@ create table public.brand_members (
 create table public.brand_kits (
   id uuid primary key default gen_random_uuid(),
   brand_id uuid not null references public.brands(id) on delete cascade,
+  name text not null default 'Default Brand Kit',
+  is_default boolean not null default true,
   voice text,
   audience text,
   value_props text,
@@ -59,6 +66,7 @@ create table public.brand_kits (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint brand_kits_brand_id_unique unique (brand_id),
+  constraint brand_kits_name_not_blank check (length(btrim(name)) > 0),
   constraint brand_kits_guidelines_object check (jsonb_typeof(guidelines) = 'object')
 );
 
@@ -147,6 +155,7 @@ create index brand_members_user_id_idx on public.brand_members (user_id);
 create index brand_members_role_idx on public.brand_members (role);
 
 create index brand_kits_brand_id_idx on public.brand_kits (brand_id);
+create unique index brand_kits_one_default_per_brand_idx on public.brand_kits (brand_id) where is_default;
 
 create index brand_provider_keys_brand_id_idx on public.brand_provider_keys (brand_id);
 create index brand_provider_keys_active_idx on public.brand_provider_keys (brand_id, provider) where is_active;

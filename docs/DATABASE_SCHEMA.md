@@ -52,6 +52,8 @@ Task 04 introduces the initial Supabase migration for the MVP schema. Brand is t
 - `id uuid primary key default gen_random_uuid()`
 - `name text not null`
 - `slug text not null unique`
+- `industry text`
+- `website_url text`
 - `default_language output_language not null default 'en'`
 - `created_by uuid not null references auth.users(id)`
 - `created_at timestamptz not null default now()`
@@ -74,6 +76,8 @@ Task 04 introduces the initial Supabase migration for the MVP schema. Brand is t
 - `audience text`
 - `value_props text`
 - `banned_terms text`
+- `name text not null default 'Default Brand Kit'`
+- `is_default boolean not null default true`
 - `guidelines jsonb not null default '{}'::jsonb`
 - `created_by uuid not null references auth.users(id)`
 - `created_at timestamptz not null default now()`
@@ -155,6 +159,7 @@ For super admin audit trails.
 - Profile creation reads safe optional `full_name` and `avatar_url` metadata, defaults `locale` to `en`, and always sets `is_super_admin` to `false`.
 - First super admin assignment still needs a controlled manual process later.
 - Brand creation and onboarding are not part of the profile creation trigger.
+- The initial schema includes first-brand onboarding fields for `brands.industry`, `brands.website_url`, `brand_kits.name`, and `brand_kits.is_default`.
 
 ## RLS
 
