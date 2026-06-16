@@ -19,6 +19,8 @@ export type UserBrandDetails = UserBrand & {
   websiteUrl: string | null;
 };
 
+export type BrandSettingsDetails = UserBrandDetails;
+
 export async function getCurrentUserBrandCount(userId: string): Promise<number> {
   if (!hasSupabasePublicEnv()) {
     return 0;
@@ -107,6 +109,51 @@ export async function getUserBrandDetails(
     role: roleByBrandId.get(brand.id) ?? "viewer",
     websiteUrl: brand.website_url,
   }));
+}
+
+export async function getBrandSettingsForUser({
+  brandId,
+  userId,
+}: {
+  brandId: string;
+  userId: string;
+}): Promise<BrandSettingsDetails | null> {
+  if (!hasSupabasePublicEnv()) {
+    return null;
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data: membership, error: membershipError } = await supabase
+    .from("brand_members")
+    .select("role")
+    .eq("brand_id", brandId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (membershipError || !membership) {
+    return null;
+  }
+
+  const { data: brand, error: brandError } = await supabase
+    .from("brands")
+    .select("id, name, slug, industry, website_url, default_language, created_at")
+    .eq("id", brandId)
+    .maybeSingle();
+
+  if (brandError || !brand) {
+    return null;
+  }
+
+  return {
+    id: brand.id,
+    name: brand.name,
+    slug: brand.slug,
+    createdAt: brand.created_at,
+    defaultLanguage: brand.default_language,
+    industry: brand.industry,
+    role: membership.role,
+    websiteUrl: brand.website_url,
+  };
 }
 
 export async function getFirstUserBrand(

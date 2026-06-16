@@ -1,6 +1,7 @@
 "use server";
 
 import { cookies } from "next/headers";
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { hasSupabasePublicEnv } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -10,11 +11,21 @@ import {
   createSlugSuffix,
   type CreateBrandInput,
   type CreateBrandFormState,
+  type BrandSettingsFormState,
   parseCreateBrandForm,
+  parseBrandSettingsForm,
 } from "@/features/brands/validation";
 
 function errorState(message: string): CreateBrandFormState {
   return { status: "error", message };
+}
+
+function brandSettingsErrorState(message: string): BrandSettingsFormState {
+  return { status: "error", message };
+}
+
+function brandSettingsSuccessState(message: string): BrandSettingsFormState {
+  return { status: "success", message };
 }
 
 function isSafeReturnPath(path: FormDataEntryValue | null): path is string {
@@ -243,4 +254,72 @@ export async function createFirstBrandAction(
   await setActiveBrandCookie(created.brandId);
 
   redirect("/dashboard");
+}
+
+export async function updateActiveBrandSettingsAction(
+  _previousState: BrandSettingsFormState,
+  formData: FormData,
+): Promise<BrandSettingsFormState> {
+  const brandId = formData.get("brandId");
+  const parsed = parseBrandSettingsForm(formData);
+
+  if (typeof brandId !== "string" || !isUuid(brandId)) {
+    return brandSettingsErrorState("Unable to update brand settings.");
+  }
+
+  if (!parsed.data) {
+    return brandSettingsErrorState(parsed.error);
+  }
+
+  if (!hasSupabasePublicEnv()) {
+    return brandSettingsErrorState("Supabase is not configured for this environment.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("brand_members")
+    .select("role")
+    .eq("brand_id", brandId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (membershipError || !membership) {
+    return brandSettingsErrorState("Unable to verify brand access.");
+  }
+
+  if (membership.role !== "owner" && membership.role !== "admin") {
+    return brandSettingsErrorState(
+      "You do not have permission to edit brand settings.",
+    );
+  }
+
+  const input = parsed.data;
+  const { error } = await supabase
+    .from("brands")
+    .update({
+      name: input.name,
+      industry: input.industry,
+      website_url: input.websiteUrl,
+      default_language: input.defaultLanguage,
+      // Slug is intentionally unchanged until public brand URLs exist.
+    })
+    .eq("id", brandId);
+
+  if (error) {
+    return brandSettingsErrorState("Unable to update brand settings.");
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/brands");
+  revalidatePath("/dashboard");
+
+  return brandSettingsSuccessState("Brand settings updated.");
 }

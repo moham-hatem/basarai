@@ -3,6 +3,11 @@ export type CreateBrandFormState = {
   message: string;
 };
 
+export type BrandSettingsFormState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
 export type BrandLanguage = "ar" | "en" | "ar_en";
 
 export type CreateBrandInput = {
@@ -12,7 +17,14 @@ export type CreateBrandInput = {
   defaultLanguage: BrandLanguage;
 };
 
+export type BrandSettingsInput = CreateBrandInput;
+
 export const initialCreateBrandFormState: CreateBrandFormState = {
+  status: "idle",
+  message: "",
+};
+
+export const initialBrandSettingsFormState: BrandSettingsFormState = {
   status: "idle",
   message: "",
 };
@@ -75,4 +87,10 @@ export function parseCreateBrandForm(
     },
     error: null,
   };
+}
+
+export function parseBrandSettingsForm(
+  formData: FormData,
+): { data: BrandSettingsInput; error: null } | { data: null; error: string } {
+  return parseCreateBrandForm(formData);
 }
