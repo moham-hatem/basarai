@@ -26,8 +26,14 @@ function isProtectedDashboardPath(pathname: string): boolean {
 }
 
 export async function updateSupabaseSession(request: NextRequest) {
-  let response = NextResponse.next({ request });
   const pathname = request.nextUrl.pathname;
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-basarai-pathname", pathname);
+  let response = NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
 
   if (!hasSupabasePublicEnv()) {
     if (shouldRequireSupabasePublicEnv()) {
@@ -44,7 +50,11 @@ export async function updateSupabaseSession(request: NextRequest) {
         return request.cookies.getAll();
       },
       setAll(cookiesToSet, headers) {
-        response = NextResponse.next({ request });
+        response = NextResponse.next({
+          request: {
+            headers: requestHeaders,
+          },
+        });
 
         cookiesToSet.forEach(({ name, value, options }) => {
           response.cookies.set(name, value, options);
