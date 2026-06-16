@@ -6,14 +6,18 @@ import { redirect } from "next/navigation";
 import { hasSupabasePublicEnv } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { ACTIVE_BRAND_COOKIE_NAME } from "@/features/brands/queries";
+import type { AppRole } from "@/lib/supabase/types";
 import {
   createBrandSlug,
   createSlugSuffix,
   type CreateBrandInput,
   type CreateBrandFormState,
   type BrandSettingsFormState,
+  type TeamMemberFormState,
   parseCreateBrandForm,
   parseBrandSettingsForm,
+  parseManageableBrandRole,
+  parseTeamMemberEmail,
 } from "@/features/brands/validation";
 
 function errorState(message: string): CreateBrandFormState {
@@ -25,6 +29,14 @@ function brandSettingsErrorState(message: string): BrandSettingsFormState {
 }
 
 function brandSettingsSuccessState(message: string): BrandSettingsFormState {
+  return { status: "success", message };
+}
+
+function teamMemberErrorState(message: string): TeamMemberFormState {
+  return { status: "error", message };
+}
+
+function teamMemberSuccessState(message: string): TeamMemberFormState {
   return { status: "success", message };
 }
 
@@ -125,6 +137,99 @@ async function createOwnedBrand({
   }
 
   return { ok: true, brandId };
+}
+
+function canManageTargetRole({
+  actorRole,
+  targetRole,
+}: {
+  actorRole: AppRole;
+  targetRole: AppRole;
+}): boolean {
+  if (actorRole === "owner") {
+    return true;
+  }
+
+  return (
+    actorRole === "admin" &&
+    (targetRole === "editor" || targetRole === "viewer")
+  );
+}
+
+function canAssignRole({
+  actorRole,
+  nextRole,
+}: {
+  actorRole: AppRole;
+  nextRole: AppRole;
+}): boolean {
+  if (actorRole === "owner") {
+    return nextRole === "admin" || nextRole === "editor" || nextRole === "viewer";
+  }
+
+  return actorRole === "admin" && (nextRole === "editor" || nextRole === "viewer");
+}
+
+async function getActorAndTargetMemberships({
+  brandId,
+  targetUserId,
+  supabase,
+  userId,
+}: {
+  brandId: string;
+  targetUserId: string;
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
+  userId: string;
+}): Promise<
+  | {
+      actorRole: AppRole;
+      ok: true;
+      targetRole: AppRole;
+    }
+  | { error: string; ok: false }
+> {
+  const { data: memberships, error } = await supabase
+    .from("brand_members")
+    .select("user_id, role")
+    .eq("brand_id", brandId)
+    .in("user_id", [userId, targetUserId]);
+
+  if (error) {
+    return { error: "Unable to verify member permissions.", ok: false };
+  }
+
+  const actorRole = memberships.find((member) => member.user_id === userId)?.role;
+  const targetRole = memberships.find(
+    (member) => member.user_id === targetUserId,
+  )?.role;
+
+  if (!actorRole || !targetRole) {
+    return { error: "Unable to verify member permissions.", ok: false };
+  }
+
+  return { actorRole, ok: true, targetRole };
+}
+
+async function isLastOwner({
+  brandId,
+  supabase,
+  targetRole,
+}: {
+  brandId: string;
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
+  targetRole: AppRole;
+}): Promise<boolean> {
+  if (targetRole !== "owner") {
+    return false;
+  }
+
+  const { count, error } = await supabase
+    .from("brand_members")
+    .select("user_id", { count: "exact", head: true })
+    .eq("brand_id", brandId)
+    .eq("role", "owner");
+
+  return !error && (count ?? 0) <= 1;
 }
 
 export async function setActiveBrandAction(formData: FormData): Promise<void> {
@@ -322,4 +427,246 @@ export async function updateActiveBrandSettingsAction(
   revalidatePath("/dashboard");
 
   return brandSettingsSuccessState("Brand settings updated.");
+}
+
+export async function addBrandMemberAction(
+  _previousState: TeamMemberFormState,
+  formData: FormData,
+): Promise<TeamMemberFormState> {
+  const brandId = formData.get("brandId");
+  const parsedEmail = parseTeamMemberEmail(formData);
+  const parsedRole = parseManageableBrandRole(formData);
+
+  if (typeof brandId !== "string" || !isUuid(brandId)) {
+    return teamMemberErrorState("Unable to add member.");
+  }
+
+  if (!parsedEmail.data) {
+    return teamMemberErrorState(parsedEmail.error ?? "Enter a valid email address.");
+  }
+
+  if (!parsedRole.data) {
+    return teamMemberErrorState(parsedRole.error);
+  }
+
+  if (!hasSupabasePublicEnv()) {
+    return teamMemberErrorState("Supabase is not configured for this environment.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: actorMembership, error } = await supabase
+    .from("brand_members")
+    .select("role")
+    .eq("brand_id", brandId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (error || !actorMembership) {
+    return teamMemberErrorState("Unable to verify brand access.");
+  }
+
+  if (!canAssignRole({ actorRole: actorMembership.role, nextRole: parsedRole.data })) {
+    return teamMemberErrorState("You do not have permission to add that role.");
+  }
+
+  const { data: targetUserId, error: lookupError } = await supabase.rpc(
+    "find_profile_id_by_email_for_brand_admin",
+    {
+      target_brand_id: brandId,
+      target_email: parsedEmail.data,
+    },
+  );
+
+  if (lookupError) {
+    return teamMemberErrorState("Unable to look up that user.");
+  }
+
+  if (!targetUserId) {
+    return teamMemberErrorState(
+      "This user must create an account before being added to the brand.",
+    );
+  }
+
+  const { data: existingMembership, error: existingError } = await supabase
+    .from("brand_members")
+    .select("user_id")
+    .eq("brand_id", brandId)
+    .eq("user_id", targetUserId)
+    .maybeSingle();
+
+  if (existingError) {
+    return teamMemberErrorState("Unable to check existing membership.");
+  }
+
+  if (existingMembership) {
+    return teamMemberErrorState("This user is already a member of the brand.");
+  }
+
+  const { error: insertError } = await supabase.from("brand_members").insert({
+    brand_id: brandId,
+    user_id: targetUserId,
+    role: parsedRole.data,
+    invited_by: user.id,
+  });
+
+  if (insertError) {
+    return teamMemberErrorState("Unable to add member.");
+  }
+
+  revalidatePath("/settings");
+
+  return teamMemberSuccessState("Member added.");
+}
+
+export async function updateBrandMemberRoleAction(
+  _previousState: TeamMemberFormState,
+  formData: FormData,
+): Promise<TeamMemberFormState> {
+  const brandId = formData.get("brandId");
+  const targetUserId = formData.get("userId");
+  const parsedRole = parseManageableBrandRole(formData);
+
+  if (
+    typeof brandId !== "string" ||
+    !isUuid(brandId) ||
+    typeof targetUserId !== "string" ||
+    !isUuid(targetUserId)
+  ) {
+    return teamMemberErrorState("Unable to update member role.");
+  }
+
+  if (!parsedRole.data) {
+    return teamMemberErrorState(parsedRole.error);
+  }
+
+  if (!hasSupabasePublicEnv()) {
+    return teamMemberErrorState("Supabase is not configured for this environment.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const memberships = await getActorAndTargetMemberships({
+    brandId,
+    targetUserId,
+    supabase,
+    userId: user.id,
+  });
+
+  if (!memberships.ok) {
+    return teamMemberErrorState(memberships.error);
+  }
+
+  if (
+    !canManageTargetRole({
+      actorRole: memberships.actorRole,
+      targetRole: memberships.targetRole,
+    }) ||
+    !canAssignRole({ actorRole: memberships.actorRole, nextRole: parsedRole.data })
+  ) {
+    return teamMemberErrorState("You do not have permission to update this member.");
+  }
+
+  if (
+    memberships.targetRole === "owner" &&
+    (await isLastOwner({ brandId, supabase, targetRole: memberships.targetRole }))
+  ) {
+    return teamMemberErrorState("The brand must have at least one owner.");
+  }
+
+  const { error } = await supabase
+    .from("brand_members")
+    .update({ role: parsedRole.data })
+    .eq("brand_id", brandId)
+    .eq("user_id", targetUserId);
+
+  if (error) {
+    return teamMemberErrorState("Unable to update member role.");
+  }
+
+  revalidatePath("/settings");
+
+  return teamMemberSuccessState("Member role updated.");
+}
+
+export async function removeBrandMemberAction(
+  _previousState: TeamMemberFormState,
+  formData: FormData,
+): Promise<TeamMemberFormState> {
+  const brandId = formData.get("brandId");
+  const targetUserId = formData.get("userId");
+
+  if (
+    typeof brandId !== "string" ||
+    !isUuid(brandId) ||
+    typeof targetUserId !== "string" ||
+    !isUuid(targetUserId)
+  ) {
+    return teamMemberErrorState("Unable to remove member.");
+  }
+
+  if (!hasSupabasePublicEnv()) {
+    return teamMemberErrorState("Supabase is not configured for this environment.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const memberships = await getActorAndTargetMemberships({
+    brandId,
+    targetUserId,
+    supabase,
+    userId: user.id,
+  });
+
+  if (!memberships.ok) {
+    return teamMemberErrorState(memberships.error);
+  }
+
+  if (
+    !canManageTargetRole({
+      actorRole: memberships.actorRole,
+      targetRole: memberships.targetRole,
+    })
+  ) {
+    return teamMemberErrorState("You do not have permission to remove this member.");
+  }
+
+  if (await isLastOwner({ brandId, supabase, targetRole: memberships.targetRole })) {
+    return teamMemberErrorState("The brand must have at least one owner.");
+  }
+
+  const { error } = await supabase
+    .from("brand_members")
+    .delete()
+    .eq("brand_id", brandId)
+    .eq("user_id", targetUserId);
+
+  if (error) {
+    return teamMemberErrorState("Unable to remove member.");
+  }
+
+  revalidatePath("/settings");
+
+  return teamMemberSuccessState("Member removed.");
 }

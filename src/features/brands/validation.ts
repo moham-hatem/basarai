@@ -8,7 +8,13 @@ export type BrandSettingsFormState = {
   message: string;
 };
 
+export type TeamMemberFormState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
 export type BrandLanguage = "ar" | "en" | "ar_en";
+export type ManageableBrandRole = "admin" | "editor" | "viewer";
 
 export type CreateBrandInput = {
   name: string;
@@ -29,7 +35,17 @@ export const initialBrandSettingsFormState: BrandSettingsFormState = {
   message: "",
 };
 
+export const initialTeamMemberFormState: TeamMemberFormState = {
+  status: "idle",
+  message: "",
+};
+
 const brandLanguages = new Set<BrandLanguage>(["ar", "en", "ar_en"]);
+const manageableBrandRoles = new Set<ManageableBrandRole>([
+  "admin",
+  "editor",
+  "viewer",
+]);
 
 function readString(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -93,4 +109,28 @@ export function parseBrandSettingsForm(
   formData: FormData,
 ): { data: BrandSettingsInput; error: null } | { data: null; error: string } {
   return parseCreateBrandForm(formData);
+}
+
+export function parseManageableBrandRole(
+  formData: FormData,
+): { data: ManageableBrandRole; error: null } | { data: null; error: string } {
+  const role = readString(formData, "role");
+
+  if (!manageableBrandRoles.has(role as ManageableBrandRole)) {
+    return { data: null, error: "Choose a supported role." };
+  }
+
+  return { data: role as ManageableBrandRole, error: null };
+}
+
+export function parseTeamMemberEmail(
+  formData: FormData,
+): { data: string; error: null } | { data: null; error: string } {
+  const email = readString(formData, "email").toLowerCase();
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { data: null, error: "Enter a valid email address." };
+  }
+
+  return { data: email, error: null };
 }

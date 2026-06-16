@@ -33,6 +33,7 @@ export type Database = {
       profiles: TableDefinition<
         {
           id: string;
+          email: string | null;
           full_name: string | null;
           avatar_url: string | null;
           is_super_admin: boolean;
@@ -40,6 +41,7 @@ export type Database = {
         } & UpdatableTimestampColumns,
         {
           id: string;
+          email?: string | null;
           full_name?: string | null;
           avatar_url?: string | null;
           is_super_admin?: boolean;
@@ -173,7 +175,15 @@ export type Database = {
       >;
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      find_profile_id_by_email_for_brand_admin: {
+        Args: {
+          target_brand_id: string;
+          target_email: string;
+        };
+        Returns: string | null;
+      };
+    };
     Enums: {
       app_role: AppRole;
       ai_provider: AiProvider;

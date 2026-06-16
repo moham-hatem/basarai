@@ -1,7 +1,11 @@
 import { redirect } from "next/navigation";
 import { BrandSettingsForm } from "@/features/brands/components/brand-settings-form";
+import { TeamSettings } from "@/features/brands/components/team-settings";
 import { requireCurrentUserBrand } from "@/features/brands/guards";
-import { getBrandSettingsForUser } from "@/features/brands/queries";
+import {
+  getBrandSettingsForUser,
+  getBrandTeamMembers,
+} from "@/features/brands/queries";
 import {
   isSettingsTabId,
   SettingsTabs,
@@ -14,7 +18,7 @@ type SettingsPageSearchParams = {
 };
 
 const placeholderTabs: Record<
-  Exclude<SettingsTabId, "brand">,
+  Exclude<SettingsTabId, "brand" | "team">,
   { description: string; note: string; title: string }
 > = {
   "ai-providers": {
@@ -27,11 +31,6 @@ const placeholderTabs: Record<
       "Define the voice, audience, rules, and content preferences for this brand.",
     note: "Brand Kit editing will be implemented in a later task.",
     title: "Brand Kit",
-  },
-  team: {
-    description: "Manage members and permissions for this brand.",
-    note: "Team management will be implemented in the next task.",
-    title: "Team & Roles",
   },
   usage: {
     description: "Track content generation activity and usage limits.",
@@ -101,6 +100,10 @@ export default async function SettingsPage({
 
   const canEdit =
     brandSettings.role === "owner" || brandSettings.role === "admin";
+  const teamMembers =
+    activeTab === "team"
+      ? await getBrandTeamMembers({ brandId: activeBrand.id })
+      : [];
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
@@ -129,8 +132,21 @@ export default async function SettingsPage({
 
           <BrandSettingsForm brand={brandSettings} canEdit={canEdit} />
         </section>
-      ) : (
+      ) : null}
+
+      {activeTab === "team" ? (
+        <TeamSettings
+          actorRole={brandSettings.role}
+          brandId={activeBrand.id}
+          currentUserId={user.id}
+          members={teamMembers}
+        />
+      ) : null}
+
+      {activeTab !== "brand" && activeTab !== "team" ? (
         <SettingsPlaceholderCard {...placeholderTabs[activeTab]} />
+      ) : (
+        null
       )}
     </div>
   );
