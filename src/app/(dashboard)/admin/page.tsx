@@ -1,6 +1,9 @@
 import { PagePlaceholder } from "@/components/layout/page-placeholder";
+import { requireCurrentUserBrand } from "@/features/brands/guards";
 
-export default function AdminPage() {
+export default async function AdminPage() {
+  await requireCurrentUserBrand();
+
   return (
     <PagePlaceholder
       cardText="Admin controls, audit views, and membership safeguards will be implemented in a later task."

@@ -1,6 +1,9 @@
 import { PagePlaceholder } from "@/components/layout/page-placeholder";
+import { requireCurrentUserBrand } from "@/features/brands/guards";
 
-export default function GeneratorPage() {
+export default async function GeneratorPage() {
+  await requireCurrentUserBrand();
+
   return (
     <PagePlaceholder
       cardText="Generator form will be implemented in a later task."

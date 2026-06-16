@@ -1,6 +1,9 @@
 import { PagePlaceholder } from "@/components/layout/page-placeholder";
+import { requireCurrentUserBrand } from "@/features/brands/guards";
 
-export default function HistoryPage() {
+export default async function HistoryPage() {
+  await requireCurrentUserBrand();
+
   return (
     <PagePlaceholder
       cardText="Generation history, filters, and saved outputs will be implemented in a later task."

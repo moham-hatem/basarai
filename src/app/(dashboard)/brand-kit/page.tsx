@@ -1,6 +1,9 @@
 import { PagePlaceholder } from "@/components/layout/page-placeholder";
+import { requireCurrentUserBrand } from "@/features/brands/guards";
 
-export default function BrandKitPage() {
+export default async function BrandKitPage() {
+  await requireCurrentUserBrand();
+
   return (
     <PagePlaceholder
       cardText="Brand voice, audience, offers, banned terms, and asset management will be implemented in a later task."

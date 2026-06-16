@@ -1,6 +1,9 @@
 import { PagePlaceholder } from "@/components/layout/page-placeholder";
+import { requireCurrentUserBrand } from "@/features/brands/guards";
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  await requireCurrentUserBrand();
+
   return (
     <PagePlaceholder
       cardText="Workspace settings, locale preferences, and BYOK provider setup will be implemented in a later task."
