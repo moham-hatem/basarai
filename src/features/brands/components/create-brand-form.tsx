@@ -2,14 +2,27 @@
 
 import { useActionState } from "react";
 import { createFirstBrandAction } from "@/features/brands/actions";
-import { initialCreateBrandFormState } from "@/features/brands/validation";
+import {
+  initialCreateBrandFormState,
+  type CreateBrandFormState,
+} from "@/features/brands/validation";
 import { FormSubmitButton } from "@/features/auth/components/form-submit-button";
 
-export function CreateBrandForm() {
-  const [state, formAction] = useActionState(
-    createFirstBrandAction,
-    initialCreateBrandFormState,
-  );
+type CreateBrandFormAction = (
+  previousState: CreateBrandFormState,
+  formData: FormData,
+) => Promise<CreateBrandFormState>;
+
+export function CreateBrandForm({
+  action = createFirstBrandAction,
+  pendingText = "Creating brand...",
+  submitText = "Create brand",
+}: {
+  action?: CreateBrandFormAction;
+  pendingText?: string;
+  submitText?: string;
+}) {
+  const [state, formAction] = useActionState(action, initialCreateBrandFormState);
 
   return (
     <form action={formAction} className="space-y-5">
@@ -86,9 +99,7 @@ export function CreateBrandForm() {
         </p>
       ) : null}
 
-      <FormSubmitButton pendingText="Creating brand...">
-        Create brand
-      </FormSubmitButton>
+      <FormSubmitButton pendingText={pendingText}>{submitText}</FormSubmitButton>
     </form>
   );
 }

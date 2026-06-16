@@ -8,6 +8,7 @@ import { ACTIVE_BRAND_COOKIE_NAME } from "@/features/brands/queries";
 import {
   createBrandSlug,
   createSlugSuffix,
+  type CreateBrandInput,
   type CreateBrandFormState,
   parseCreateBrandForm,
 } from "@/features/brands/validation";
@@ -24,6 +25,95 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value,
   );
+}
+
+async function setActiveBrandCookie(brandId: string): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.set(ACTIVE_BRAND_COOKIE_NAME, brandId, {
+    httpOnly: true,
+    maxAge: 60 * 60 * 24 * 365,
+    path: "/",
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
+}
+
+async function createOwnedBrand({
+  input,
+  supabase,
+  userId,
+}: {
+  input: CreateBrandInput;
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
+  userId: string;
+}): Promise<{ ok: true; brandId: string } | { ok: false; error: string }> {
+  const slugCandidates = [
+    createBrandSlug(input.name),
+    createBrandSlug(input.name, createSlugSuffix()),
+    createBrandSlug(input.name, createSlugSuffix()),
+  ];
+
+  let brandId: string | null = null;
+
+  for (const slug of slugCandidates) {
+    const { data, error } = await supabase
+      .from("brands")
+      .insert({
+        name: input.name,
+        slug,
+        industry: input.industry,
+        website_url: input.websiteUrl,
+        default_language: input.defaultLanguage,
+        created_by: userId,
+      })
+      .select("id")
+      .single();
+
+    if (!error && data) {
+      brandId = data.id;
+      break;
+    }
+
+    if (error && error.code !== "23505") {
+      return { ok: false, error: "Unable to create brand. Please try again." };
+    }
+  }
+
+  if (!brandId) {
+    return {
+      ok: false,
+      error: "Unable to create a unique brand slug. Please try again.",
+    };
+  }
+
+  const memberResult = await supabase.from("brand_members").insert({
+    brand_id: brandId,
+    user_id: userId,
+    role: "owner",
+  });
+
+  if (memberResult.error) {
+    return {
+      ok: false,
+      error: "Brand was created, but owner access could not be added.",
+    };
+  }
+
+  const kitResult = await supabase.from("brand_kits").insert({
+    brand_id: brandId,
+    name: "Default Brand Kit",
+    is_default: true,
+    created_by: userId,
+  });
+
+  if (kitResult.error) {
+    return {
+      ok: false,
+      error: "Brand was created, but the default brand kit could not be added.",
+    };
+  }
+
+  return { ok: true, brandId };
 }
 
 export async function setActiveBrandAction(formData: FormData): Promise<void> {
@@ -59,16 +149,47 @@ export async function setActiveBrandAction(formData: FormData): Promise<void> {
     redirect(redirectPath);
   }
 
-  const cookieStore = await cookies();
-  cookieStore.set(ACTIVE_BRAND_COOKIE_NAME, brandId, {
-    httpOnly: true,
-    maxAge: 60 * 60 * 24 * 365,
-    path: "/",
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-  });
+  await setActiveBrandCookie(brandId);
 
   redirect(redirectPath);
+}
+
+export async function createAdditionalBrandAction(
+  _previousState: CreateBrandFormState,
+  formData: FormData,
+): Promise<CreateBrandFormState> {
+  const parsed = parseCreateBrandForm(formData);
+
+  if (!parsed.data) {
+    return errorState(parsed.error);
+  }
+
+  if (!hasSupabasePublicEnv()) {
+    return errorState("Supabase is not configured for this environment.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const created = await createOwnedBrand({
+    input: parsed.data,
+    supabase,
+    userId: user.id,
+  });
+
+  if (!created.ok) {
+    return errorState(created.error);
+  }
+
+  await setActiveBrandCookie(created.brandId);
+
+  redirect("/brands");
 }
 
 export async function createFirstBrandAction(
@@ -109,63 +230,17 @@ export async function createFirstBrandAction(
     return errorState("Unable to check brand access. Please try again.");
   }
 
-  const input = parsed.data;
-  const slugCandidates = [
-    createBrandSlug(input.name),
-    createBrandSlug(input.name, createSlugSuffix()),
-    createBrandSlug(input.name, createSlugSuffix()),
-  ];
-
-  let brandId: string | null = null;
-
-  for (const slug of slugCandidates) {
-    const { data, error } = await supabase
-      .from("brands")
-      .insert({
-        name: input.name,
-        slug,
-        industry: input.industry,
-        website_url: input.websiteUrl,
-        default_language: input.defaultLanguage,
-        created_by: user.id,
-      })
-      .select("id")
-      .single();
-
-    if (!error && data) {
-      brandId = data.id;
-      break;
-    }
-
-    if (error && error.code !== "23505") {
-      return errorState("Unable to create brand. Please try again.");
-    }
-  }
-
-  if (!brandId) {
-    return errorState("Unable to create a unique brand slug. Please try again.");
-  }
-
-  const memberResult = await supabase.from("brand_members").insert({
-    brand_id: brandId,
-    user_id: user.id,
-    role: "owner",
+  const created = await createOwnedBrand({
+    input: parsed.data,
+    supabase,
+    userId: user.id,
   });
 
-  if (memberResult.error) {
-    return errorState("Brand was created, but owner access could not be added.");
+  if (!created.ok) {
+    return errorState(created.error);
   }
 
-  const kitResult = await supabase.from("brand_kits").insert({
-    brand_id: brandId,
-    name: "Default Brand Kit",
-    is_default: true,
-    created_by: user.id,
-  });
-
-  if (kitResult.error) {
-    return errorState("Brand was created, but the default brand kit could not be added.");
-  }
+  await setActiveBrandCookie(created.brandId);
 
   redirect("/dashboard");
 }
