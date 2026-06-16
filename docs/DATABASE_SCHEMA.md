@@ -43,6 +43,7 @@ Task 04 introduces the initial Supabase migration for the MVP schema. Brand is t
 - `full_name text`
 - `avatar_url text`
 - `is_super_admin boolean not null default false`
+- `locale output_language not null default 'en'`
 - `created_at timestamptz not null default now()`
 - `updated_at timestamptz not null default now()`
 
@@ -149,6 +150,11 @@ For super admin audit trails.
 
 - `public.set_updated_at()` updates `updated_at` before row updates.
 - `profiles`, `brands`, `brand_kits`, and `brand_provider_keys` use the `updated_at` trigger.
+- `auth.users` is managed by Supabase Auth.
+- `public.handle_new_user()` creates a matching `public.profiles` row after a new `auth.users` row is inserted.
+- Profile creation reads safe optional `full_name` and `avatar_url` metadata, defaults `locale` to `en`, and always sets `is_super_admin` to `false`.
+- First super admin assignment still needs a controlled manual process later.
+- Brand creation and onboarding are not part of the profile creation trigger.
 
 ## RLS
 
