@@ -18,10 +18,13 @@ import {
   type BrandKitFormState,
   type BrandSettingsFormState,
   type TeamMemberFormState,
+  type ProviderKeyFormState,
   parseCreateBrandForm,
   parseBrandKitForm,
   parseBrandSettingsForm,
   parseManageableBrandRole,
+  parseProviderFromForm,
+  parseProviderKeyForm,
   parseTeamMemberEmail,
 } from "@/features/brands/validation";
 
@@ -42,6 +45,14 @@ function brandKitErrorState(message: string): BrandKitFormState {
 }
 
 function brandKitSuccessState(message: string): BrandKitFormState {
+  return { status: "success", message };
+}
+
+function providerKeyErrorState(message: string): ProviderKeyFormState {
+  return { status: "error", message };
+}
+
+function providerKeySuccessState(message: string): ProviderKeyFormState {
   return { status: "success", message };
 }
 
@@ -185,6 +196,18 @@ function canAssignRole({
 
 function canEditBrandKit(role: AppRole): boolean {
   return role === "owner" || role === "admin" || role === "editor";
+}
+
+function canManageProviderKeys(role: AppRole): boolean {
+  return role === "owner" || role === "admin";
+}
+
+function maskProviderKey(apiKey: string): string {
+  const compactKey = apiKey.trim();
+  const prefix = compactKey.slice(0, Math.min(7, compactKey.length));
+  const suffix = compactKey.slice(-4);
+
+  return `${prefix}...${suffix}`;
 }
 
 async function getActorAndTargetMemberships({
@@ -535,6 +558,142 @@ export async function updateDefaultBrandKitAction(
   revalidatePath("/settings");
 
   return brandKitSuccessState("Brand Kit updated.");
+}
+
+export async function saveProviderKeyAction(
+  _previousState: ProviderKeyFormState,
+  formData: FormData,
+): Promise<ProviderKeyFormState> {
+  const brandId = formData.get("brandId");
+  const parsed = parseProviderKeyForm(formData);
+
+  if (typeof brandId !== "string" || !isUuid(brandId)) {
+    return providerKeyErrorState("Unable to save provider key.");
+  }
+
+  if (!parsed.data) {
+    return providerKeyErrorState(parsed.error);
+  }
+
+  if (!hasSupabasePublicEnv()) {
+    return providerKeyErrorState("Supabase is not configured for this environment.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const activeBrand = await getActiveBrandForUser(user.id);
+
+  if (!activeBrand || activeBrand.id !== brandId) {
+    return providerKeyErrorState("Unable to verify the active brand.");
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("brand_members")
+    .select("role")
+    .eq("brand_id", activeBrand.id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (membershipError || !membership) {
+    return providerKeyErrorState("Unable to verify brand access.");
+  }
+
+  if (!canManageProviderKeys(membership.role)) {
+    return providerKeyErrorState("You do not have permission to manage provider keys.");
+  }
+
+  const input = parsed.data;
+  const { error: vaultError } = await supabase.rpc(
+    "upsert_brand_provider_vault_secret",
+    {
+      key_label: input.label,
+      masked_provider_key: maskProviderKey(input.apiKey),
+      raw_provider_key: input.apiKey,
+      target_brand_id: activeBrand.id,
+      target_provider: input.provider,
+    },
+  );
+
+  if (vaultError) {
+    return providerKeyErrorState("Unable to store provider key securely.");
+  }
+
+  revalidatePath("/settings");
+
+  return providerKeySuccessState("Provider key saved securely.");
+}
+
+export async function deleteProviderKeyAction(
+  _previousState: ProviderKeyFormState,
+  formData: FormData,
+): Promise<ProviderKeyFormState> {
+  const brandId = formData.get("brandId");
+  const parsed = parseProviderFromForm(formData);
+
+  if (typeof brandId !== "string" || !isUuid(brandId)) {
+    return providerKeyErrorState("Unable to delete provider key.");
+  }
+
+  if (!parsed.data) {
+    return providerKeyErrorState(parsed.error);
+  }
+
+  if (!hasSupabasePublicEnv()) {
+    return providerKeyErrorState("Supabase is not configured for this environment.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const activeBrand = await getActiveBrandForUser(user.id);
+
+  if (!activeBrand || activeBrand.id !== brandId) {
+    return providerKeyErrorState("Unable to verify the active brand.");
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("brand_members")
+    .select("role")
+    .eq("brand_id", activeBrand.id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (membershipError || !membership) {
+    return providerKeyErrorState("Unable to verify brand access.");
+  }
+
+  if (!canManageProviderKeys(membership.role)) {
+    return providerKeyErrorState("You do not have permission to manage provider keys.");
+  }
+
+  const { error: vaultError } = await supabase.rpc(
+    "delete_brand_provider_vault_secret",
+    {
+      target_brand_id: activeBrand.id,
+      target_provider: parsed.data,
+    },
+  );
+
+  if (vaultError) {
+    return providerKeyErrorState("Unable to delete provider key securely.");
+  }
+
+  revalidatePath("/settings");
+
+  return providerKeySuccessState("Provider key deleted.");
 }
 
 export async function addBrandMemberAction(

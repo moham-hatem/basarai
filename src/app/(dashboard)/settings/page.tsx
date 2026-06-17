@@ -1,9 +1,11 @@
 import { redirect } from "next/navigation";
+import { AiProvidersSettings } from "@/features/brands/components/ai-providers-settings";
 import { BrandKitForm } from "@/features/brands/components/brand-kit-form";
 import { BrandSettingsForm } from "@/features/brands/components/brand-settings-form";
 import { TeamSettings } from "@/features/brands/components/team-settings";
 import { requireCurrentUserBrand } from "@/features/brands/guards";
 import {
+  getBrandProviderKeyMetadata,
   getBrandSettingsForUser,
   getBrandTeamMembers,
   getDefaultBrandKitForUser,
@@ -20,14 +22,9 @@ type SettingsPageSearchParams = {
 };
 
 const placeholderTabs: Record<
-  Exclude<SettingsTabId, "brand" | "brand-kit" | "team">,
+  Exclude<SettingsTabId, "ai-providers" | "brand" | "brand-kit" | "team">,
   { description: string; note: string; title: string }
 > = {
-  "ai-providers": {
-    description: "Connect OpenAI or Gemini using BYOK.",
-    note: "Provider key management will be implemented in a later task.",
-    title: "AI Providers",
-  },
   usage: {
     description: "Track content generation activity and usage limits.",
     note: "Usage analytics will be implemented in a later task.",
@@ -104,6 +101,10 @@ export default async function SettingsPage({
     activeTab === "team"
       ? await getBrandTeamMembers({ brandId: activeBrand.id })
       : [];
+  const providerKeys =
+    activeTab === "ai-providers"
+      ? await getBrandProviderKeyMetadata({ brandId: activeBrand.id })
+      : [];
   const brandKit =
     activeTab === "brand-kit"
       ? await getDefaultBrandKitForUser({
@@ -177,7 +178,16 @@ export default async function SettingsPage({
         </section>
       ) : null}
 
+      {activeTab === "ai-providers" ? (
+        <AiProvidersSettings
+          actorRole={brandSettings.role}
+          brandId={activeBrand.id}
+          providerKeys={providerKeys}
+        />
+      ) : null}
+
       {activeTab !== "brand" &&
+      activeTab !== "ai-providers" &&
       activeTab !== "brand-kit" &&
       activeTab !== "team" ? (
         <SettingsPlaceholderCard {...placeholderTabs[activeTab]} />

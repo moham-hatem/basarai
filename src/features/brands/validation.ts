@@ -18,8 +18,14 @@ export type BrandKitFormState = {
   message: string;
 };
 
+export type ProviderKeyFormState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
 export type BrandLanguage = "ar" | "en" | "ar_en";
 export type ManageableBrandRole = "admin" | "editor" | "viewer";
+export type SupportedAiProvider = "openai" | "gemini";
 
 export type CreateBrandInput = {
   name: string;
@@ -47,6 +53,12 @@ export type BrandKitInput = {
   writingRules: string[];
 };
 
+export type ProviderKeyInput = {
+  apiKey: string;
+  label: string | null;
+  provider: SupportedAiProvider;
+};
+
 export const initialCreateBrandFormState: CreateBrandFormState = {
   status: "idle",
   message: "",
@@ -67,12 +79,18 @@ export const initialBrandKitFormState: BrandKitFormState = {
   message: "",
 };
 
+export const initialProviderKeyFormState: ProviderKeyFormState = {
+  status: "idle",
+  message: "",
+};
+
 const brandLanguages = new Set<BrandLanguage>(["ar", "en", "ar_en"]);
 const manageableBrandRoles = new Set<ManageableBrandRole>([
   "admin",
   "editor",
   "viewer",
 ]);
+const supportedAiProviders = new Set<SupportedAiProvider>(["openai", "gemini"]);
 
 function readString(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -229,4 +247,45 @@ export function parseBrandKitForm(
     },
     error: null,
   };
+}
+
+export function parseProviderKeyForm(
+  formData: FormData,
+): { data: ProviderKeyInput; error: null } | { data: null; error: string } {
+  const apiKey = readString(formData, "apiKey");
+  const label = readString(formData, "label");
+  const provider = readString(formData, "provider");
+
+  if (!supportedAiProviders.has(provider as SupportedAiProvider)) {
+    return { data: null, error: "Choose a supported AI provider." };
+  }
+
+  if (apiKey.length < 8) {
+    return { data: null, error: "Provider key must be at least 8 characters." };
+  }
+
+  if (label.length > 80) {
+    return { data: null, error: "Label must be 80 characters or less." };
+  }
+
+  return {
+    data: {
+      apiKey,
+      label: label || null,
+      provider: provider as SupportedAiProvider,
+    },
+    error: null,
+  };
+}
+
+export function parseProviderFromForm(
+  formData: FormData,
+): { data: SupportedAiProvider; error: null } | { data: null; error: string } {
+  const provider = readString(formData, "provider");
+
+  if (!supportedAiProviders.has(provider as SupportedAiProvider)) {
+    return { data: null, error: "Choose a supported AI provider." };
+  }
+
+  return { data: provider as SupportedAiProvider, error: null };
 }

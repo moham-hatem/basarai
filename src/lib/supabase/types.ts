@@ -126,7 +126,20 @@ export type Database = {
           last_tested_at: string | null;
           last_test_status: string | null;
           created_by: string;
-        } & UpdatableTimestampColumns
+        } & UpdatableTimestampColumns,
+        {
+          id?: string;
+          brand_id: string;
+          provider: AiProvider;
+          vault_secret_id: string;
+          masked_key: string;
+          is_active?: boolean;
+          last_tested_at?: string | null;
+          last_test_status?: string | null;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        }
       >;
       generation_history: TableDefinition<
         {
@@ -176,12 +189,29 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      delete_brand_provider_vault_secret: {
+        Args: {
+          target_brand_id: string;
+          target_provider: AiProvider;
+        };
+        Returns: void;
+      };
       find_profile_id_by_email_for_brand_admin: {
         Args: {
           target_brand_id: string;
           target_email: string;
         };
         Returns: string | null;
+      };
+      upsert_brand_provider_vault_secret: {
+        Args: {
+          target_brand_id: string;
+          target_provider: AiProvider;
+          raw_provider_key: string;
+          masked_provider_key: string;
+          key_label?: string | null;
+        };
+        Returns: void;
       };
     };
     Enums: {

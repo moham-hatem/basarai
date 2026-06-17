@@ -1,7 +1,12 @@
 import { hasSupabasePublicEnv } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
-import type { AppRole, Json, OutputLanguage } from "@/lib/supabase/types";
+import type {
+  AiProvider,
+  AppRole,
+  Json,
+  OutputLanguage,
+} from "@/lib/supabase/types";
 
 export const ACTIVE_BRAND_COOKIE_NAME = "basarai_active_brand_id";
 
@@ -47,6 +52,15 @@ export type BrandKitDetails = {
   toneOfVoice: string | null;
   valueProposition: string | null;
   writingRules: string[];
+};
+
+export type BrandProviderKeyMetadata = {
+  id: string;
+  isActive: boolean;
+  lastTestStatus: string | null;
+  lastTestedAt: string | null;
+  maskedKey: string;
+  provider: AiProvider;
 };
 
 type BrandKitRow = {
@@ -373,6 +387,36 @@ export async function getDefaultBrandKitForUser({
   }
 
   return mapBrandKit(createdKit);
+}
+
+export async function getBrandProviderKeyMetadata({
+  brandId,
+}: {
+  brandId: string;
+}): Promise<BrandProviderKeyMetadata[]> {
+  if (!hasSupabasePublicEnv()) {
+    return [];
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("brand_provider_keys")
+    .select("id, provider, masked_key, is_active, last_tested_at, last_test_status")
+    .eq("brand_id", brandId)
+    .order("provider", { ascending: true });
+
+  if (error) {
+    return [];
+  }
+
+  return data.map((key) => ({
+    id: key.id,
+    isActive: key.is_active,
+    lastTestStatus: key.last_test_status,
+    lastTestedAt: key.last_tested_at,
+    maskedKey: key.masked_key,
+    provider: key.provider,
+  }));
 }
 
 export async function getFirstUserBrand(
