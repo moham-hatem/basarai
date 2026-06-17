@@ -1,0 +1,72 @@
+import type { GeneratedContentResult } from "@/lib/ai/types";
+
+export function GeneratedResults({ result }: { result: GeneratedContentResult }) {
+  return (
+    <section className="space-y-4" aria-live="polite">
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold text-stone-950 dark:text-stone-50">
+          Generated variants
+        </h2>
+        <p className="text-sm text-stone-600 dark:text-stone-300">
+          Review, copy, and adapt these drafts before using them outside Basarai.
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        {result.variants.map((variant, index) => (
+          <article
+            className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm dark:border-stone-800 dark:bg-stone-900"
+            key={`${variant.hook}-${index}`}
+          >
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">
+                Variant {index + 1}
+              </h3>
+            </div>
+
+            <div className="space-y-4 text-sm">
+              <ResultField label="Hook" value={variant.hook} />
+              <ResultField multiline label="Caption" value={variant.caption} />
+              <ResultField label="CTA" value={variant.cta} />
+              <ResultField
+                label="Hashtags"
+                value={variant.hashtags.length ? variant.hashtags.join(" ") : ""}
+              />
+              <ResultField
+                multiline
+                label="Image prompt"
+                value={variant.image_prompt}
+              />
+              <ResultField multiline label="Notes" value={variant.notes} />
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ResultField({
+  label,
+  multiline = false,
+  value,
+}: {
+  label: string;
+  multiline?: boolean;
+  value: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <p className="font-medium text-stone-800 dark:text-stone-200">{label}</p>
+      <p
+        className={
+          multiline
+            ? "whitespace-pre-wrap leading-6 text-stone-700 dark:text-stone-300"
+            : "text-stone-700 dark:text-stone-300"
+        }
+      >
+        {value || "Not provided"}
+      </p>
+    </div>
+  );
+}

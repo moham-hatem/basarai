@@ -145,20 +145,50 @@ export type Database = {
         {
           id: string;
           brand_id: string;
+          brand_kit_id: string | null;
           user_id: string;
           provider: AiProvider;
           model: string;
           platform: SocialPlatform;
           language: OutputLanguage;
+          goal: string | null;
+          topic: string | null;
           status: GenerationStatus;
           prompt_snapshot: Json;
           input_payload: Json;
           output: Json;
           tokens: number;
+          tokens_input: number;
+          tokens_output: number;
+          tokens_total: number;
           latency_ms: number | null;
           error_message: string | null;
           completed_at: string | null;
-        } & TimestampColumns
+        } & TimestampColumns,
+        {
+          id?: string;
+          brand_id: string;
+          brand_kit_id?: string | null;
+          user_id: string;
+          provider: AiProvider;
+          model: string;
+          platform: SocialPlatform;
+          language: OutputLanguage;
+          goal?: string | null;
+          topic?: string | null;
+          status?: GenerationStatus;
+          prompt_snapshot?: Json;
+          input_payload?: Json;
+          output?: Json;
+          tokens?: number;
+          tokens_input?: number;
+          tokens_output?: number;
+          tokens_total?: number;
+          latency_ms?: number | null;
+          error_message?: string | null;
+          completed_at?: string | null;
+          created_at?: string;
+        }
       >;
       usage_events: TableDefinition<
         {
@@ -204,6 +234,13 @@ export type Database = {
         Returns: string | null;
       };
       get_brand_provider_key_secret: {
+        Args: {
+          target_brand_id: string;
+          target_provider: AiProvider;
+        };
+        Returns: string;
+      };
+      get_generation_provider_key_secret: {
         Args: {
           target_brand_id: string;
           target_provider: AiProvider;

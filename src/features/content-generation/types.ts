@@ -1,13 +1,25 @@
-import type { BrandId, BrandLocale } from "@/features/brands/types";
+import type {
+  AiProvider,
+  OutputLanguage,
+  SocialPlatform,
+} from "@/lib/supabase/types";
+import type { BrandId } from "@/features/brands/types";
 
-export type AiProvider = "openai" | "gemini";
-
-export type SocialChannel = "instagram" | "linkedin" | "x" | "tiktok";
+export type GenerationGoal =
+  | "announcement"
+  | "awareness"
+  | "education"
+  | "engagement"
+  | "launch"
+  | "sales";
 
 export type GenerationRequest = {
   brandId: BrandId;
   provider: AiProvider;
-  locale: BrandLocale;
-  channel: SocialChannel;
-  prompt: string;
+  goal: GenerationGoal;
+  language: OutputLanguage;
+  numberOfVariants: number;
+  platform: SocialPlatform;
+  toneOverride?: string | null;
+  topic: string;
 };
