@@ -2,7 +2,7 @@ import "server-only";
 
 import {
   AIProviderError,
-  mapHttpStatusToProviderError,
+  mapProviderResponseToError,
 } from "@/lib/ai/errors";
 import type { ProviderValidationResult } from "@/lib/ai/providers/openai";
 import type {
@@ -104,7 +104,7 @@ async function generateGeminiText(
     });
 
     if (!response.ok) {
-      throw mapHttpStatusToProviderError(response.status);
+      throw await mapProviderResponseToError(response);
     }
 
     const body = (await response.json()) as GeminiGenerateContentResponse;
