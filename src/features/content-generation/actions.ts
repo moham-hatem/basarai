@@ -7,11 +7,14 @@ import { buildContentGenerationPrompt, parseGeneratedContent } from "@/lib/ai/pr
 import { getAIProviderAdapter } from "@/lib/ai/provider-registry";
 import { hasSupabasePublicEnv } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { GeneratedContentResult, GeneratedContentVariant } from "@/lib/ai/types";
 import type {
+  AiProvider,
   AppRole,
   GenerationStatus,
   Json,
   OutputLanguage,
+  SocialPlatform,
 } from "@/lib/supabase/types";
 import { getActiveBrandForUser } from "@/features/brands/queries";
 import {
@@ -59,10 +62,13 @@ function errorState(message: string): ContentGenerationFormState {
 }
 
 function successState({
+  demoMode = false,
   message,
   result,
-}: Pick<ContentGenerationFormState, "message" | "result">): ContentGenerationFormState {
-  return { message, result, status: "success" };
+}: Pick<ContentGenerationFormState, "message" | "result"> & {
+  demoMode?: boolean;
+}): ContentGenerationFormState {
+  return { demoMode, message, result, status: "success" };
 }
 
 function canGenerate(role: AppRole): boolean {
@@ -91,6 +97,7 @@ function tokensOrZero(value: number | undefined): number {
 
 function createInputPayload(input: ContentGenerationFormInput): Json {
   return {
+    demoMode: input.provider === "demo",
     goal: input.goal,
     language: input.language,
     numberOfVariants: input.numberOfVariants,
@@ -99,6 +106,109 @@ function createInputPayload(input: ContentGenerationFormInput): Json {
     toneOverride: input.toneOverride,
     topic: input.topic,
   };
+}
+
+function platformName(platform: SocialPlatform): string {
+  if (platform === "x") {
+    return "X/Twitter";
+  }
+
+  return platform.charAt(0).toUpperCase() + platform.slice(1);
+}
+
+function languageInstruction(language: OutputLanguage): {
+  cta: string;
+  hookPrefix: string;
+  notes: string;
+} {
+  if (language === "ar") {
+    return {
+      cta: "ابدأ الآن",
+      hookPrefix: "فكرة جاهزة",
+      notes: "نتيجة تجريبية باللغة العربية فقط.",
+    };
+  }
+
+  if (language === "ar_en") {
+    return {
+      cta: "ابدأ الآن / Start now",
+      hookPrefix: "فكرة جاهزة / Ready idea",
+      notes: "Demo bilingual Arabic + English result.",
+    };
+  }
+
+  return {
+    cta: "Start now",
+    hookPrefix: "Ready-to-test idea",
+    notes: "Demo English result.",
+  };
+}
+
+function demoCaption({
+  brandName,
+  input,
+  platform,
+  variantNumber,
+  voice,
+}: {
+  brandName: string;
+  input: ContentGenerationFormInput;
+  platform: string;
+  variantNumber: number;
+  voice: string;
+}): string {
+  if (input.language === "ar") {
+    return `${brandName} يشارك فكرة عن ${input.topic} بهدف ${input.goal}. صيغت هذه النسخة التجريبية لمنصة ${platform} بنبرة ${voice}.`;
+  }
+
+  if (input.language === "ar_en") {
+    return `${brandName} يشارك فكرة عن ${input.topic} بهدف ${input.goal}.\n\n${brandName} is testing a ${platform} post about ${input.topic} with a ${voice} tone. Variant ${variantNumber} keeps the message practical and brand-aware.`;
+  }
+
+  return `${brandName} is testing a ${platform} post about ${input.topic}. This demo variant supports the ${input.goal} goal with a ${voice} tone and a clear next step.`;
+}
+
+function createDemoContent({
+  brand,
+  brandKit,
+  input,
+}: {
+  brand: ActiveBrandContext["brand"];
+  brandKit: ActiveBrandContext["brandKit"];
+  input: ContentGenerationFormInput;
+}): GeneratedContentResult {
+  const platform = platformName(input.platform);
+  const language = languageInstruction(input.language);
+  const voice = input.toneOverride ?? brandKit.voice ?? "clear, helpful";
+  const audience = brandKit.audience ?? "the target audience";
+  const valueProp = brandKit.value_props ?? "the brand promise";
+  const variants = Array.from({ length: input.numberOfVariants }, (_, index) => {
+    const variantNumber = index + 1;
+    const hook =
+      input.language === "en"
+        ? `${language.hookPrefix}: ${brand.name} on ${input.topic}`
+        : `${language.hookPrefix}: ${brand.name} عن ${input.topic}`;
+
+    return {
+      caption: demoCaption({
+        brandName: brand.name,
+        input,
+        platform,
+        variantNumber,
+        voice,
+      }),
+      cta: language.cta,
+      hashtags:
+        input.platform === "instagram"
+          ? ["#Demo", `#${brand.name.replace(/\s+/g, "")}`, "#Content"]
+          : ["#Demo"],
+      hook,
+      image_prompt: `Demo visual direction for ${brand.name}: show ${input.topic} for ${audience}, emphasizing ${valueProp}.`,
+      notes: `${language.notes} This sample did not call OpenAI, Gemini, Vault, or any external AI provider.`,
+    } satisfies GeneratedContentVariant;
+  });
+
+  return { variants };
 }
 
 async function loadActiveBrandContext({
@@ -172,7 +282,7 @@ async function insertGenerationHistory({
   latencyMs: number | null;
   model: string;
   output: Json;
-  provider: ContentGenerationFormInput["provider"];
+  provider: AiProvider;
   status: GenerationStatus;
   tokensInput: number;
   tokensOutput: number;
@@ -246,18 +356,30 @@ export async function generateContentAction(
     return errorState("You do not have permission to generate content.");
   }
 
-  const prompt = buildContentGenerationPrompt({
-    brand: context.brand,
-    brandKit: context.brandKit,
-    generation: {
-      goal: parsed.data.goal,
-      language: parsed.data.language,
-      numberOfVariants: parsed.data.numberOfVariants,
-      platform: parsed.data.platform,
-      toneOverride: parsed.data.toneOverride,
-      topic: parsed.data.topic,
-    },
-  });
+  const prompt =
+    parsed.data.provider === "demo"
+      ? [
+          "Demo generation only.",
+          "No OpenAI, Gemini, Vault, or external AI provider call was made.",
+          `Brand: ${context.brand.name}`,
+          `Platform: ${parsed.data.platform}`,
+          `Language: ${parsed.data.language}`,
+          `Goal: ${parsed.data.goal}`,
+          `Topic: ${parsed.data.topic}`,
+          `Variants: ${parsed.data.numberOfVariants}`,
+        ].join("\n")
+      : buildContentGenerationPrompt({
+          brand: context.brand,
+          brandKit: context.brandKit,
+          generation: {
+            goal: parsed.data.goal,
+            language: parsed.data.language,
+            numberOfVariants: parsed.data.numberOfVariants,
+            platform: parsed.data.platform,
+            toneOverride: parsed.data.toneOverride,
+            topic: parsed.data.topic,
+          },
+        });
   const historyContext: HistoryContext = {
     brandId: context.brand.id,
     brandKitId: context.brandKit.id,
@@ -266,6 +388,36 @@ export async function generateContentAction(
     supabase,
     userId: user.id,
   };
+
+  if (parsed.data.provider === "demo") {
+    const result = createDemoContent({
+      brand: context.brand,
+      brandKit: context.brandKit,
+      input: parsed.data,
+    });
+
+    await insertGenerationHistory({
+      ...historyContext,
+      completedAt: new Date().toISOString(),
+      errorMessage: null,
+      latencyMs: Date.now() - startedAt,
+      model: "basarai-demo",
+      output: result as Json,
+      provider: "gemini",
+      status: "completed",
+      tokensInput: 0,
+      tokensOutput: 0,
+      tokensTotal: 0,
+    });
+
+    revalidatePath("/generator");
+
+    return successState({
+      demoMode: true,
+      message: "Demo content generated.",
+      result,
+    });
+  }
 
   try {
     const { data: providerSecret, error: secretError } = await supabase.rpc(

@@ -68,6 +68,7 @@ export function GeneratorForm({
             <div className="grid gap-5 md:grid-cols-2">
               <SelectField
                 canGenerate={canGenerate}
+                helpText="Demo mode generates sample content without calling an AI provider."
                 id="provider"
                 label="AI provider"
                 name="provider"
@@ -163,7 +164,9 @@ export function GeneratorForm({
         </form>
       </section>
 
-      {state.result ? <GeneratedResults result={state.result} /> : null}
+      {state.result ? (
+        <GeneratedResults demoMode={state.demoMode} result={state.result} />
+      ) : null}
     </div>
   );
 }
@@ -175,13 +178,15 @@ function SelectField<TValue extends string>({
   label,
   name,
   options,
+  helpText,
 }: {
   canGenerate: boolean;
   defaultValue?: TValue;
+  helpText?: string;
   id: string;
   label: string;
   name: string;
-  options: { label: string; value: TValue }[];
+  options: { helpText?: string; label: string; value: TValue }[];
 }) {
   return (
     <div className="space-y-2">
@@ -204,6 +209,11 @@ function SelectField<TValue extends string>({
           </option>
         ))}
       </select>
+      {helpText ? (
+        <p className="text-xs leading-5 text-stone-500 dark:text-stone-400">
+          {helpText}
+        </p>
+      ) : null}
     </div>
   );
 }

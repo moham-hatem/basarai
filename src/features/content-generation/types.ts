@@ -5,6 +5,8 @@ import type {
 } from "@/lib/supabase/types";
 import type { BrandId } from "@/features/brands/types";
 
+export type GenerationProvider = AiProvider | "demo";
+
 export type GenerationGoal =
   | "announcement"
   | "awareness"
@@ -15,7 +17,7 @@ export type GenerationGoal =
 
 export type GenerationRequest = {
   brandId: BrandId;
-  provider: AiProvider;
+  provider: GenerationProvider;
   goal: GenerationGoal;
   language: OutputLanguage;
   numberOfVariants: number;

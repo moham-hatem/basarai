@@ -5,6 +5,8 @@ import type {
 } from "@/lib/supabase/types";
 import type { GeneratedContentResult } from "@/lib/ai/types";
 
+export type GenerationProvider = AiProvider | "demo";
+
 export type GenerationGoal =
   | "announcement"
   | "awareness"
@@ -18,18 +20,20 @@ export type ContentGenerationFormInput = {
   language: OutputLanguage;
   numberOfVariants: number;
   platform: SocialPlatform;
-  provider: AiProvider;
+  provider: GenerationProvider;
   toneOverride: string | null;
   topic: string;
 };
 
 export type ContentGenerationFormState = {
+  demoMode: boolean;
   message: string;
   result: GeneratedContentResult | null;
   status: "idle" | "error" | "success";
 };
 
 export const initialContentGenerationFormState: ContentGenerationFormState = {
+  demoMode: false,
   message: "",
   result: null,
   status: "idle",
@@ -57,7 +61,16 @@ export const generationPlatforms: { label: string; value: SocialPlatform }[] = [
   { label: "X/Twitter", value: "x" },
 ];
 
-export const generationProviders: { label: string; value: AiProvider }[] = [
+export const generationProviders: {
+  helpText?: string;
+  label: string;
+  value: GenerationProvider;
+}[] = [
+  {
+    helpText: "Demo mode generates sample content without calling an AI provider.",
+    label: "Demo",
+    value: "demo",
+  },
   { label: "OpenAI", value: "openai" },
   { label: "Gemini", value: "gemini" },
 ];
@@ -71,7 +84,7 @@ const languageValues = new Set<OutputLanguage>(
 const platformValues = new Set<SocialPlatform>(
   generationPlatforms.map((platform) => platform.value),
 );
-const providerValues = new Set<AiProvider>(
+const providerValues = new Set<GenerationProvider>(
   generationProviders.map((provider) => provider.value),
 );
 
@@ -94,7 +107,7 @@ function readNumberOfVariants(formData: FormData): number | null {
 export function parseContentGenerationForm(
   formData: FormData,
 ): { data: ContentGenerationFormInput; error?: never } | { data?: never; error: string } {
-  const provider = readString(formData, "provider") as AiProvider;
+  const provider = readString(formData, "provider") as GenerationProvider;
   const platform = readString(formData, "platform") as SocialPlatform;
   const language = readString(formData, "language") as OutputLanguage;
   const goal = readString(formData, "goal") as GenerationGoal;
