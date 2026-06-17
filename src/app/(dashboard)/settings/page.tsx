@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
+import { BrandKitForm } from "@/features/brands/components/brand-kit-form";
 import { BrandSettingsForm } from "@/features/brands/components/brand-settings-form";
 import { TeamSettings } from "@/features/brands/components/team-settings";
 import { requireCurrentUserBrand } from "@/features/brands/guards";
 import {
   getBrandSettingsForUser,
   getBrandTeamMembers,
+  getDefaultBrandKitForUser,
 } from "@/features/brands/queries";
 import {
   isSettingsTabId,
@@ -18,19 +20,13 @@ type SettingsPageSearchParams = {
 };
 
 const placeholderTabs: Record<
-  Exclude<SettingsTabId, "brand" | "team">,
+  Exclude<SettingsTabId, "brand" | "brand-kit" | "team">,
   { description: string; note: string; title: string }
 > = {
   "ai-providers": {
     description: "Connect OpenAI or Gemini using BYOK.",
     note: "Provider key management will be implemented in a later task.",
     title: "AI Providers",
-  },
-  "brand-kit": {
-    description:
-      "Define the voice, audience, rules, and content preferences for this brand.",
-    note: "Brand Kit editing will be implemented in a later task.",
-    title: "Brand Kit",
   },
   usage: {
     description: "Track content generation activity and usage limits.",
@@ -100,10 +96,22 @@ export default async function SettingsPage({
 
   const canEdit =
     brandSettings.role === "owner" || brandSettings.role === "admin";
+  const canEditBrandKit =
+    brandSettings.role === "owner" ||
+    brandSettings.role === "admin" ||
+    brandSettings.role === "editor";
   const teamMembers =
     activeTab === "team"
       ? await getBrandTeamMembers({ brandId: activeBrand.id })
       : [];
+  const brandKit =
+    activeTab === "brand-kit"
+      ? await getDefaultBrandKitForUser({
+          allowCreate: canEditBrandKit,
+          brandId: activeBrand.id,
+          userId: user.id,
+        })
+      : null;
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
@@ -143,7 +151,35 @@ export default async function SettingsPage({
         />
       ) : null}
 
-      {activeTab !== "brand" && activeTab !== "team" ? (
+      {activeTab === "brand-kit" ? (
+        <section className="rounded-lg border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-stone-900">
+          <div className="mb-5 space-y-1">
+            <h2 className="text-lg font-semibold text-stone-950 dark:text-stone-50">
+              Brand Kit
+            </h2>
+            <p className="text-sm leading-6 text-stone-600 dark:text-stone-300">
+              Define the voice, audience, rules, and content preferences for
+              this brand.
+            </p>
+          </div>
+
+          {brandKit ? (
+            <BrandKitForm
+              brandId={activeBrand.id}
+              brandKit={brandKit}
+              canEdit={canEditBrandKit}
+            />
+          ) : (
+            <div className="rounded-md border border-dashed border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-600 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-300">
+              Unable to load the default Brand Kit for this brand.
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {activeTab !== "brand" &&
+      activeTab !== "brand-kit" &&
+      activeTab !== "team" ? (
         <SettingsPlaceholderCard {...placeholderTabs[activeTab]} />
       ) : (
         null

@@ -1,7 +1,7 @@
 import { hasSupabasePublicEnv } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
-import type { AppRole, OutputLanguage } from "@/lib/supabase/types";
+import type { AppRole, Json, OutputLanguage } from "@/lib/supabase/types";
 
 export const ACTIVE_BRAND_COOKIE_NAME = "basarai_active_brand_id";
 
@@ -29,6 +29,119 @@ export type BrandTeamMember = {
   role: AppRole;
   userId: string;
 };
+
+export type BrandKitDetails = {
+  audience: string | null;
+  bannedWords: string[];
+  brandId: string;
+  competitors: string[];
+  examples: string[];
+  id: string;
+  name: string;
+  personalityTraits: string[];
+  preferredHashtags: string[];
+  preferredWords: string[];
+  primaryColor: string | null;
+  productDescription: string | null;
+  secondaryColor: string | null;
+  toneOfVoice: string | null;
+  valueProposition: string | null;
+  writingRules: string[];
+};
+
+type BrandKitRow = {
+  audience: string | null;
+  banned_terms: string | null;
+  brand_id: string;
+  guidelines: Json;
+  id: string;
+  name: string;
+  value_props: string | null;
+  voice: string | null;
+};
+
+type BrandKitGuidelines = {
+  banned_words: string[];
+  competitors: string[];
+  examples: string[];
+  personality_traits: string[];
+  preferred_hashtags: string[];
+  preferred_words: string[];
+  primary_color: string | null;
+  product_description: string | null;
+  secondary_color: string | null;
+  writing_rules: string[];
+};
+
+function isJsonObject(value: Json): value is { [key: string]: Json | undefined } {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readJsonString(value: Json | undefined): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function readJsonStringArray(value: Json | undefined): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function parseDelimitedText(value: string | null): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(/[,\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseBrandKitGuidelines(value: Json): BrandKitGuidelines {
+  const guidelines = isJsonObject(value) ? value : {};
+
+  return {
+    banned_words: readJsonStringArray(guidelines.banned_words),
+    competitors: readJsonStringArray(guidelines.competitors),
+    examples: readJsonStringArray(guidelines.examples),
+    personality_traits: readJsonStringArray(guidelines.personality_traits),
+    preferred_hashtags: readJsonStringArray(guidelines.preferred_hashtags),
+    preferred_words: readJsonStringArray(guidelines.preferred_words),
+    primary_color: readJsonString(guidelines.primary_color),
+    product_description: readJsonString(guidelines.product_description),
+    secondary_color: readJsonString(guidelines.secondary_color),
+    writing_rules: readJsonStringArray(guidelines.writing_rules),
+  };
+}
+
+function mapBrandKit(row: BrandKitRow): BrandKitDetails {
+  const guidelines = parseBrandKitGuidelines(row.guidelines);
+
+  return {
+    audience: row.audience,
+    bannedWords:
+      guidelines.banned_words.length > 0
+        ? guidelines.banned_words
+        : parseDelimitedText(row.banned_terms),
+    brandId: row.brand_id,
+    competitors: guidelines.competitors,
+    examples: guidelines.examples,
+    id: row.id,
+    name: row.name,
+    personalityTraits: guidelines.personality_traits,
+    preferredHashtags: guidelines.preferred_hashtags,
+    preferredWords: guidelines.preferred_words,
+    primaryColor: guidelines.primary_color,
+    productDescription: guidelines.product_description,
+    secondaryColor: guidelines.secondary_color,
+    toneOfVoice: row.voice,
+    valueProposition: row.value_props,
+    writingRules: guidelines.writing_rules,
+  };
+}
 
 export async function getCurrentUserBrandCount(userId: string): Promise<number> {
   if (!hasSupabasePublicEnv()) {
@@ -207,6 +320,59 @@ export async function getBrandTeamMembers({
       userId: membership.user_id,
     };
   });
+}
+
+export async function getDefaultBrandKitForUser({
+  allowCreate,
+  brandId,
+  userId,
+}: {
+  allowCreate: boolean;
+  brandId: string;
+  userId: string;
+}): Promise<BrandKitDetails | null> {
+  if (!hasSupabasePublicEnv()) {
+    return null;
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const selectedColumns =
+    "id, brand_id, name, voice, audience, value_props, banned_terms, guidelines";
+  const { data: existingKit, error: selectError } = await supabase
+    .from("brand_kits")
+    .select(selectedColumns)
+    .eq("brand_id", brandId)
+    .eq("is_default", true)
+    .maybeSingle();
+
+  if (selectError) {
+    return null;
+  }
+
+  if (existingKit) {
+    return mapBrandKit(existingKit);
+  }
+
+  if (!allowCreate) {
+    return null;
+  }
+
+  const { data: createdKit, error: insertError } = await supabase
+    .from("brand_kits")
+    .insert({
+      brand_id: brandId,
+      created_by: userId,
+      is_default: true,
+      name: "Default Brand Kit",
+    })
+    .select(selectedColumns)
+    .single();
+
+  if (insertError || !createdKit) {
+    return null;
+  }
+
+  return mapBrandKit(createdKit);
 }
 
 export async function getFirstUserBrand(

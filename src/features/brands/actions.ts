@@ -5,16 +5,21 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { hasSupabasePublicEnv } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { ACTIVE_BRAND_COOKIE_NAME } from "@/features/brands/queries";
-import type { AppRole } from "@/lib/supabase/types";
+import {
+  ACTIVE_BRAND_COOKIE_NAME,
+  getActiveBrandForUser,
+} from "@/features/brands/queries";
+import type { AppRole, Json } from "@/lib/supabase/types";
 import {
   createBrandSlug,
   createSlugSuffix,
   type CreateBrandInput,
   type CreateBrandFormState,
+  type BrandKitFormState,
   type BrandSettingsFormState,
   type TeamMemberFormState,
   parseCreateBrandForm,
+  parseBrandKitForm,
   parseBrandSettingsForm,
   parseManageableBrandRole,
   parseTeamMemberEmail,
@@ -29,6 +34,14 @@ function brandSettingsErrorState(message: string): BrandSettingsFormState {
 }
 
 function brandSettingsSuccessState(message: string): BrandSettingsFormState {
+  return { status: "success", message };
+}
+
+function brandKitErrorState(message: string): BrandKitFormState {
+  return { status: "error", message };
+}
+
+function brandKitSuccessState(message: string): BrandKitFormState {
   return { status: "success", message };
 }
 
@@ -168,6 +181,10 @@ function canAssignRole({
   }
 
   return actorRole === "admin" && (nextRole === "editor" || nextRole === "viewer");
+}
+
+function canEditBrandKit(role: AppRole): boolean {
+  return role === "owner" || role === "admin" || role === "editor";
 }
 
 async function getActorAndTargetMemberships({
@@ -427,6 +444,97 @@ export async function updateActiveBrandSettingsAction(
   revalidatePath("/dashboard");
 
   return brandSettingsSuccessState("Brand settings updated.");
+}
+
+export async function updateDefaultBrandKitAction(
+  _previousState: BrandKitFormState,
+  formData: FormData,
+): Promise<BrandKitFormState> {
+  const brandId = formData.get("brandId");
+  const brandKitId = formData.get("brandKitId");
+  const parsed = parseBrandKitForm(formData);
+
+  if (
+    typeof brandId !== "string" ||
+    !isUuid(brandId) ||
+    typeof brandKitId !== "string" ||
+    !isUuid(brandKitId)
+  ) {
+    return brandKitErrorState("Unable to update the Brand Kit.");
+  }
+
+  if (!parsed.data) {
+    return brandKitErrorState(parsed.error);
+  }
+
+  if (!hasSupabasePublicEnv()) {
+    return brandKitErrorState("Supabase is not configured for this environment.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const activeBrand = await getActiveBrandForUser(user.id);
+
+  if (!activeBrand || activeBrand.id !== brandId) {
+    return brandKitErrorState("Unable to verify the active brand.");
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("brand_members")
+    .select("role")
+    .eq("brand_id", activeBrand.id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (membershipError || !membership) {
+    return brandKitErrorState("Unable to verify brand access.");
+  }
+
+  if (!canEditBrandKit(membership.role)) {
+    return brandKitErrorState("You do not have permission to edit the Brand Kit.");
+  }
+
+  const input = parsed.data;
+  const guidelines: Json = {
+    banned_words: input.bannedWords,
+    competitors: input.competitors,
+    examples: input.examples,
+    personality_traits: input.personalityTraits,
+    preferred_hashtags: input.preferredHashtags,
+    preferred_words: input.preferredWords,
+    primary_color: input.primaryColor,
+    product_description: input.productDescription,
+    secondary_color: input.secondaryColor,
+    writing_rules: input.writingRules,
+  };
+  const { error } = await supabase
+    .from("brand_kits")
+    .update({
+      audience: input.audience,
+      banned_terms: input.bannedWords.join(", ") || null,
+      guidelines,
+      name: input.name,
+      value_props: input.valueProposition,
+      voice: input.toneOfVoice,
+    })
+    .eq("id", brandKitId)
+    .eq("brand_id", activeBrand.id)
+    .eq("is_default", true);
+
+  if (error) {
+    return brandKitErrorState("Unable to update the Brand Kit.");
+  }
+
+  revalidatePath("/settings");
+
+  return brandKitSuccessState("Brand Kit updated.");
 }
 
 export async function addBrandMemberAction(
