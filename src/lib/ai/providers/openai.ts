@@ -119,7 +119,7 @@ async function generateOpenAIText(
     });
 
     if (!response.ok) {
-      throw await mapProviderResponseToError(response);
+      throw await mapProviderResponseToError(response, "openai");
     }
 
     const body = (await response.json()) as OpenAIResponseBody;

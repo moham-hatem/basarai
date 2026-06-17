@@ -104,7 +104,7 @@ async function generateGeminiText(
     });
 
     if (!response.ok) {
-      throw await mapProviderResponseToError(response);
+      throw await mapProviderResponseToError(response, "gemini");
     }
 
     const body = (await response.json()) as GeminiGenerateContentResponse;

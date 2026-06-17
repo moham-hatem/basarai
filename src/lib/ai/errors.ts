@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { AIProviderName } from "@/lib/ai/types";
+
 export type AIProviderErrorCode =
   | "invalid_provider"
   | "provider_auth_failed"
@@ -10,41 +12,80 @@ export type AIProviderErrorCode =
   | "provider_bad_response"
   | "unknown_provider_error";
 
-const safeMessages: Record<AIProviderErrorCode, string> = {
-  invalid_provider: "Unsupported AI provider.",
-  provider_auth_failed: "Invalid provider key.",
-  provider_quota_exceeded: "Your provider account has no available API credits.",
-  provider_rate_limited: "Provider rate limit reached. Please try again later.",
-  provider_model_unavailable: "Selected model is not available for this provider key.",
-  provider_unavailable: "Provider is currently unavailable.",
-  provider_bad_response: "Unable to generate content right now.",
-  unknown_provider_error: "Unable to generate content right now.",
+const providerLabels: Record<AIProviderName, string> = {
+  gemini: "Gemini",
+  openai: "OpenAI",
 };
+
+function providerLabel(provider: AIProviderName | null): string {
+  return provider ? providerLabels[provider] : "Provider";
+}
+
+function safeMessageForCode(
+  code: AIProviderErrorCode,
+  provider: AIProviderName | null,
+): string {
+  const label = providerLabel(provider);
+
+  if (code === "invalid_provider") {
+    return "Unsupported AI provider.";
+  }
+
+  if (code === "provider_auth_failed") {
+    return `Invalid ${label} provider key.`;
+  }
+
+  if (code === "provider_quota_exceeded") {
+    return `${label} account has no available API credits or quota.`;
+  }
+
+  if (code === "provider_rate_limited") {
+    return `${label} rate limit reached. Please try again later.`;
+  }
+
+  if (code === "provider_model_unavailable") {
+    return `Selected model is not available for this ${label} provider key.`;
+  }
+
+  if (code === "provider_unavailable") {
+    return `${label} is currently unavailable.`;
+  }
+
+  return "Unable to generate content right now.";
+}
 
 export class AIProviderError extends Error {
   readonly code: AIProviderErrorCode;
+  readonly provider: AIProviderName | null;
 
-  constructor(code: AIProviderErrorCode) {
-    super(safeMessages[code]);
+  constructor(code: AIProviderErrorCode, provider: AIProviderName | null = null) {
+    super(safeMessageForCode(code, provider));
     this.code = code;
+    this.provider = provider;
     this.name = "AIProviderError";
   }
 }
 
-export function mapHttpStatusToProviderError(status: number): AIProviderError {
+export function mapHttpStatusToProviderError({
+  provider = null,
+  status,
+}: {
+  provider?: AIProviderName | null;
+  status: number;
+}): AIProviderError {
   if (status === 401 || status === 403) {
-    return new AIProviderError("provider_auth_failed");
+    return new AIProviderError("provider_auth_failed", provider);
   }
 
   if (status === 429) {
-    return new AIProviderError("provider_rate_limited");
+    return new AIProviderError("provider_rate_limited", provider);
   }
 
   if (status >= 500) {
-    return new AIProviderError("provider_unavailable");
+    return new AIProviderError("provider_unavailable", provider);
   }
 
-  return new AIProviderError("unknown_provider_error");
+  return new AIProviderError("unknown_provider_error", provider);
 }
 
 function readProviderErrorText(value: unknown): string {
@@ -74,9 +115,11 @@ function readProviderErrorText(value: unknown): string {
 }
 
 function mapProviderErrorText({
+  provider,
   status,
   text,
 }: {
+  provider: AIProviderName;
   status: number;
   text: string;
 }): AIProviderError | null {
@@ -89,7 +132,7 @@ function mapProviderErrorText({
     normalized.includes("billing") ||
     normalized.includes("resource_exhausted")
   ) {
-    return new AIProviderError("provider_quota_exceeded");
+    return new AIProviderError("provider_quota_exceeded", provider);
   }
 
   if (
@@ -100,7 +143,7 @@ function mapProviderErrorText({
     normalized.includes("not found for api version") ||
     normalized.includes("not supported for generatecontent")
   ) {
-    return new AIProviderError("provider_model_unavailable");
+    return new AIProviderError("provider_model_unavailable", provider);
   }
 
   if (
@@ -109,15 +152,15 @@ function mapProviderErrorText({
     normalized.includes("invalid authentication") ||
     normalized.includes("incorrect api key")
   ) {
-    return new AIProviderError("provider_auth_failed");
+    return new AIProviderError("provider_auth_failed", provider);
   }
 
   if (normalized.includes("rate_limit") || normalized.includes("rate limit")) {
-    return new AIProviderError("provider_rate_limited");
+    return new AIProviderError("provider_rate_limited", provider);
   }
 
   if (status === 400 || status === 404) {
-    return new AIProviderError("provider_model_unavailable");
+    return new AIProviderError("provider_model_unavailable", provider);
   }
 
   return null;
@@ -125,6 +168,7 @@ function mapProviderErrorText({
 
 export async function mapProviderResponseToError(
   response: Response,
+  provider: AIProviderName,
 ): Promise<AIProviderError> {
   try {
     const contentType = response.headers.get("content-type") ?? "";
@@ -132,6 +176,7 @@ export async function mapProviderResponseToError(
       ? await response.json()
       : await response.text();
     const mapped = mapProviderErrorText({
+      provider,
       status: response.status,
       text: readProviderErrorText(errorPayload),
     });
@@ -143,5 +188,5 @@ export async function mapProviderResponseToError(
     // Ignore provider parsing failures and fall back to safe status mapping.
   }
 
-  return mapHttpStatusToProviderError(response.status);
+  return mapHttpStatusToProviderError({ provider, status: response.status });
 }
