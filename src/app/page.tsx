@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { appConfig } from "@/lib/config";
 
 export default function Home() {
@@ -15,9 +16,20 @@ export default function Home() {
           <span className="text-lg font-semibold tracking-wide">
             {appConfig.name}
           </span>
-          <span className="text-sm text-stone-700 dark:text-stone-300">
-            MVP foundation
-          </span>
+          <nav aria-label="Primary" className="flex items-center gap-3">
+            <Link
+              className="text-sm font-medium text-stone-700 transition hover:text-emerald-800 dark:text-stone-300 dark:hover:text-emerald-300"
+              href="/login"
+            >
+              Log in
+            </Link>
+            <Link
+              className="rounded-md bg-emerald-800 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-900 dark:bg-emerald-500 dark:text-stone-950 dark:hover:bg-emerald-400"
+              href="/signup"
+            >
+              Create account
+            </Link>
+          </nav>
         </header>
 
         <section className="grid flex-1 items-center gap-10 py-12 lg:grid-cols-[1.1fr_0.9fr]">
@@ -35,6 +47,32 @@ export default function Home() {
                 tenant-scoped Supabase policies.
               </p>
             </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Link
+                className="flex h-11 items-center justify-center rounded-md bg-emerald-800 px-5 text-sm font-semibold text-white transition hover:bg-emerald-900 dark:bg-emerald-500 dark:text-stone-950 dark:hover:bg-emerald-400"
+                href="/dashboard"
+              >
+                Go to dashboard
+              </Link>
+              <Link
+                className="flex h-11 items-center justify-center rounded-md border border-stone-300 px-5 text-sm font-semibold text-stone-800 transition hover:border-emerald-700 hover:text-emerald-800 dark:border-stone-700 dark:text-stone-100 dark:hover:border-emerald-400 dark:hover:text-emerald-300"
+                href="/login"
+              >
+                Log in
+              </Link>
+              <Link
+                className="flex h-11 items-center justify-center rounded-md border border-stone-300 px-5 text-sm font-semibold text-stone-800 transition hover:border-emerald-700 hover:text-emerald-800 dark:border-stone-700 dark:text-stone-100 dark:hover:border-emerald-400 dark:hover:text-emerald-300"
+                href="/signup"
+              >
+                Create account
+              </Link>
+            </div>
+
+            <p className="max-w-2xl rounded-md bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+              You can test content generation using Demo provider without OpenAI
+              or Gemini credits.
+            </p>
           </div>
 
           <div className="grid gap-3 rounded-lg border border-stone-300 bg-white/70 p-5 shadow-sm dark:border-stone-700 dark:bg-stone-950/60">
