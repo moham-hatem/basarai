@@ -4,6 +4,11 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { hasSupabasePublicEnv } from "@/lib/env";
+import { validateGeminiKey } from "@/lib/ai/providers/gemini";
+import {
+  validateOpenAiKey,
+  type ProviderValidationResult,
+} from "@/lib/ai/providers/openai";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   ACTIVE_BRAND_COOKIE_NAME,
@@ -208,6 +213,18 @@ function maskProviderKey(apiKey: string): string {
   const suffix = compactKey.slice(-4);
 
   return `${prefix}...${suffix}`;
+}
+
+function providerTestMessage(status: ProviderValidationResult): string {
+  if (status === "valid") {
+    return "Provider key is valid.";
+  }
+
+  if (status === "invalid") {
+    return "Provider key is invalid.";
+  }
+
+  return "Unable to test provider key right now.";
 }
 
 async function getActorAndTargetMemberships({
@@ -694,6 +711,94 @@ export async function deleteProviderKeyAction(
   revalidatePath("/settings");
 
   return providerKeySuccessState("Provider key deleted.");
+}
+
+export async function testProviderKeyAction(
+  _previousState: ProviderKeyFormState,
+  formData: FormData,
+): Promise<ProviderKeyFormState> {
+  const brandId = formData.get("brandId");
+  const parsed = parseProviderFromForm(formData);
+
+  if (typeof brandId !== "string" || !isUuid(brandId)) {
+    return providerKeyErrorState("Unable to test provider key right now.");
+  }
+
+  if (!parsed.data) {
+    return providerKeyErrorState(parsed.error);
+  }
+
+  if (!hasSupabasePublicEnv()) {
+    return providerKeyErrorState("Supabase is not configured for this environment.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const activeBrand = await getActiveBrandForUser(user.id);
+
+  if (!activeBrand || activeBrand.id !== brandId) {
+    return providerKeyErrorState("Unable to verify the active brand.");
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("brand_members")
+    .select("role")
+    .eq("brand_id", activeBrand.id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (membershipError || !membership) {
+    return providerKeyErrorState("Unable to verify brand access.");
+  }
+
+  if (!canManageProviderKeys(membership.role)) {
+    return providerKeyErrorState("You do not have permission to manage provider keys.");
+  }
+
+  const { data: providerSecret, error: secretError } = await supabase.rpc(
+    "get_brand_provider_key_secret",
+    {
+      target_brand_id: activeBrand.id,
+      target_provider: parsed.data,
+    },
+  );
+
+  if (secretError || !providerSecret) {
+    return providerKeyErrorState("Unable to test provider key right now.");
+  }
+
+  const testStatus =
+    parsed.data === "openai"
+      ? await validateOpenAiKey(providerSecret)
+      : await validateGeminiKey(providerSecret);
+
+  const { error: updateError } = await supabase
+    .from("brand_provider_keys")
+    .update({
+      last_test_status: testStatus,
+      last_tested_at: new Date().toISOString(),
+    })
+    .eq("brand_id", activeBrand.id)
+    .eq("provider", parsed.data);
+
+  if (updateError) {
+    return providerKeyErrorState("Unable to test provider key right now.");
+  }
+
+  revalidatePath("/settings");
+
+  if (testStatus === "valid") {
+    return providerKeySuccessState(providerTestMessage(testStatus));
+  }
+
+  return providerKeyErrorState(providerTestMessage(testStatus));
 }
 
 export async function addBrandMemberAction(

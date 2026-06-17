@@ -1,7 +1,10 @@
 "use client";
 
 import { useActionState } from "react";
-import { deleteProviderKeyAction } from "@/features/brands/actions";
+import {
+  deleteProviderKeyAction,
+  testProviderKeyAction,
+} from "@/features/brands/actions";
 import type { BrandProviderKeyMetadata } from "@/features/brands/queries";
 import {
   initialProviderKeyFormState,
@@ -24,7 +27,21 @@ function formatDate(value: string | null): string {
 }
 
 function formatStatus(value: string | null): string {
-  return value ? value.replace(/_/g, " ") : "untested";
+  const normalized = value ?? "untested";
+
+  if (normalized === "valid") {
+    return "Valid";
+  }
+
+  if (normalized === "invalid") {
+    return "Invalid";
+  }
+
+  if (normalized === "failed") {
+    return "Failed";
+  }
+
+  return "Untested";
 }
 
 export function ProviderKeyCard({
@@ -40,6 +57,10 @@ export function ProviderKeyCard({
     deleteProviderKeyAction,
     initialProviderKeyFormState,
   );
+  const [testState, testFormAction] = useActionState<
+    ProviderKeyFormState,
+    FormData
+  >(testProviderKeyAction, initialProviderKeyFormState);
 
   return (
     <article className="space-y-4 rounded-lg border border-stone-200 p-4 dark:border-stone-800">
@@ -80,13 +101,27 @@ export function ProviderKeyCard({
 
       {canManage ? (
         <div className="flex flex-wrap gap-2">
-          <button
-            className="h-9 cursor-not-allowed rounded-md border border-stone-200 px-3 text-xs font-semibold text-stone-400 dark:border-stone-800 dark:text-stone-500"
-            disabled
-            type="button"
-          >
-            Test key later
-          </button>
+          <form action={testFormAction} className="space-y-2">
+            <input name="brandId" type="hidden" value={brandId} />
+            <input name="provider" type="hidden" value={providerKey.provider} />
+            <button
+              className="h-9 rounded-md border border-stone-200 px-3 text-xs font-semibold text-stone-700 transition hover:bg-stone-50 dark:border-stone-800 dark:text-stone-200 dark:hover:bg-stone-950"
+              type="submit"
+            >
+              Test key
+            </button>
+            {testState.message ? (
+              <p
+                className={
+                  testState.status === "success"
+                    ? "text-xs text-emerald-700 dark:text-emerald-300"
+                    : "text-xs text-amber-700 dark:text-amber-300"
+                }
+              >
+                {testState.message}
+              </p>
+            ) : null}
+          </form>
           <form action={formAction} className="space-y-2">
             <input name="brandId" type="hidden" value={brandId} />
             <input name="provider" type="hidden" value={providerKey.provider} />

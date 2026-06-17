@@ -203,6 +203,13 @@ export type Database = {
         };
         Returns: string | null;
       };
+      get_brand_provider_key_secret: {
+        Args: {
+          target_brand_id: string;
+          target_provider: AiProvider;
+        };
+        Returns: string;
+      };
       upsert_brand_provider_vault_secret: {
         Args: {
           target_brand_id: string;
